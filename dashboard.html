@@ -169,10 +169,54 @@
 <body>
 
 <div class="container">
-    <header>
-        <h1>Dashboard Analítico P&L - Filtros Dinámicos</h1>
-        <p>Cruza información de Empresas y Meses. La tabla inferior está organizada jerárquicamente por códigos.</p>
+    <header style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; text-align:left; background:white; padding:18px 25px; border-radius:12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 6px solid #27ae60;">
+        <div>
+            <h1 style="margin:0; font-size:24px;">🍕 Dashboard Analítico P&L - Filtros Dinámicos</h1>
+            <p style="margin:5px 0 0 0; color:#7f8c8d; font-size:14px;">Cruza información de Empresas y Meses (2026). Incluye persistencia automática de archivos Excel.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span id="persistenceBadge" style="font-size:12px; padding:6px 12px; border-radius:20px; background:#ecf0f1; color:#555; font-weight:600;">Verificando almacenamiento...</span>
+            <button id="togglePersistMenuBtn" style="background:#2c3e50; color:white; border:none; padding:10px 16px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; display:flex; align-items:center; gap:6px;">
+                📂 Menú de Archivos Excel Persistentes
+            </button>
+        </div>
     </header>
+
+    <!-- MENÚ DESPLEGABLE DE GESTIÓN Y PERSISTENCIA DE ARCHIVOS EXCEL -->
+    <div id="persistMenuPanel" class="panel" style="display:none; border: 2px solid #27ae60; background: #f9fdfb;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0; color:#1e8449;">💾 Gestión de Archivos Excel Persistentes (Servidor / Contenedor)</h3>
+            <button onclick="document.getElementById('persistMenuPanel').style.display='none'" style="background:transparent; border:none; font-size:18px; cursor:pointer; color:#7f8c8d;">✖</button>
+        </div>
+        <p style="font-size:13px; color:#555; margin-top:0; margin-bottom:15px;">
+            Los archivos que cargues en este menú o en los selectores <b>1A</b> y <b>1B</b> se guardan de forma <b>persistente</b> en el servidor del contenedor (puerto <code>8089</code>) y en la memoria del navegador. Así, cuando tú u otro usuario abran el Dashboard, <b>se cargarán automáticamente</b> sin tener que volver a subirlos.
+        </p>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:15px; margin-bottom:15px;">
+            <div style="background:white; padding:15px; border-radius:8px; border:1px solid #dce4ec;">
+                <div style="font-weight:700; color:#2c3e50; font-size:14px; margin-bottom:6px;">📄 1A. Balance P&G Persistido</div>
+                <div id="persistPygInfo" style="font-size:13px; color:#7f8c8d; margin-bottom:10px;">Sin archivo guardado</div>
+                <label style="display:inline-block; background:#27ae60; color:white; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; margin:0;">
+                    ⬆️ Subir / Actualizar Balance P&G
+                    <input type="file" id="menuPygUpload" accept=".xlsx, .xls" style="display:none;">
+                </label>
+            </div>
+            <div style="background:white; padding:15px; border-radius:8px; border:1px solid #dce4ec;">
+                <div style="font-weight:700; color:#2c3e50; font-size:14px; margin-bottom:6px;">🎫 1B. Tickets (TKT) Persistido</div>
+                <div id="persistTktInfo" style="font-size:13px; color:#7f8c8d; margin-bottom:10px;">Sin archivo guardado</div>
+                <label style="display:inline-block; background:#2980b9; color:white; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; margin:0;">
+                    ⬆️ Subir / Actualizar Tickets TKT
+                    <input type="file" id="menuTktUpload" accept=".xlsx, .xls" style="display:none;">
+                </label>
+            </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid #e0eee6; padding-top:12px;">
+            <span id="persistActionMsg" style="font-size:13px; font-weight:600; color:#1e8449;"></span>
+            <div style="display:flex; gap:10px;">
+                <button id="reloadPersistedBtn" style="background:#3498db; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">🔄 Recargar Archivos Guardados</button>
+                <button id="clearPersistedBtn" style="background:#e74c3c; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">🗑️ Borrar Archivos Persistidos</button>
+            </div>
+        </div>
+    </div>
 
     <div class="panel">
         <div class="controls">
@@ -334,140 +378,326 @@
     const analyzeBtn = document.getElementById('analyzeBtn');
     const dashboardContent = document.getElementById('dashboardContent');
 
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+    function processPygArrayBuffer(arrayBuffer, fileName = "Balance_PyG.xlsx") {
+        const data = new Uint8Array(arrayBuffer);
+        workbook = XLSX.read(data, {type: 'array'});
+        
+        sheetCheckboxes.innerHTML = `
+            <label class="checkbox-item" style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold;">
+                <input type="checkbox" id="selectAllSheets"> Seleccionar Todo
+            </label>
+        `;
+        // Códigos de las empresas
+        const uiStores = ['HOR', 'AMA', 'EST', 'ILA', 'ARM', 'SERV', 'ATA', 'CUM', 'PIZ', 'TUM', 'PON', 'MAL', 'FLO', 'CAR', 'PJ', 'QUI', 'SP', 'PUEM', 'FICOA', 'URD', 'SAL', 'CENT', 'SMB', 'HEL'];
+        const storeToSheetMap = { 
+            'ARM': 'ILA', 
+            'PJ': 'CAR',
+            'URD': 'ESTRA',
+            'SAL': 'ESTRA',
+            'CENT': 'GUAY',
+            'SMB': 'GUAY'
+        };
+        const actualSheets = workbook.SheetNames.map(s => s.trim().toUpperCase());
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            workbook = XLSX.read(data, {type: 'array'});
+        uiStores.forEach(storeName => {
+            const sheetName = storeToSheetMap[storeName] || storeName;
+            if (!actualSheets.includes(sheetName)) return;
             
-            sheetCheckboxes.innerHTML = `
-                <label class="checkbox-item" style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold;">
-                    <input type="checkbox" id="selectAllSheets"> Seleccionar Todo
-                </label>
-            `;
-            // Códigos de las empresas
+            const label = document.createElement('label');
+            label.className = 'checkbox-item';
+            label.innerHTML = `<input type="checkbox" class="sheet-cb" value="${storeName}"> ${storeName}`;
+            sheetCheckboxes.appendChild(label);
+        });
+        sheetCheckboxes.classList.remove('disabled-list');
+        salesAccountInput.disabled = false;
+
+        const infoEl = document.getElementById('persistPygInfo');
+        if (infoEl) {
+            infoEl.innerHTML = `<span style="color:#27ae60; font-weight:bold;">✓ Activo:</span> ${fileName}`;
+        }
+    }
+
+    function processTktArrayBuffer(arrayBuffer, fileName = "TKT_mensuales.xlsx") {
+        try {
+            const data = new Uint8Array(arrayBuffer);
+            const workbookTkt = XLSX.read(data, {type: 'array'});
+            allTktData = {}; // reset
+
             const uiStores = ['HOR', 'AMA', 'EST', 'ILA', 'ARM', 'SERV', 'ATA', 'CUM', 'PIZ', 'TUM', 'PON', 'MAL', 'FLO', 'CAR', 'PJ', 'QUI', 'SP', 'PUEM', 'FICOA', 'URD', 'SAL', 'CENT', 'SMB', 'HEL'];
-            const storeToSheetMap = { 
-                'ARM': 'ILA', 
-                'PJ': 'CAR',
-                'URD': 'ESTRA',
-                'SAL': 'ESTRA',
-                'CENT': 'GUAY',
-                'SMB': 'GUAY'
+            const tktStoreMap = {
+                'HOR': 'PIZZERIA EL HORNERO CIA. ', 'AMA': 'PIZZERIA AMAZONAS LOVAROB', 'EST': 'RESTADIO CIA. LTDA.',
+                'ILA': 'RESTAURANTES ILALO RESILA', 'ARM': 'ARMENIA', 'SERV': 'SERVICIOS A DOMICILIO SER',
+                'ATA': 'RESTAURANTE ATAHUALPA RES', 'CUM': 'RESTAURANTE CUMBAYA RESCU', 'PIZ': 'PIZARRICA CIA. LTDA.',
+                'TUM': 'RESTUMBACO CIA. LTDA.', 'PON': 'RESPONCIANO CIA. LTDA.', 'MAL': 'RESMALDONADO CIA. LTDA.',
+                'FLO': 'RESFLORESTA CIA. LTDA.', 'CAR': 'RESCARAPUNGO CIA. LTDA.', 'PJ': 'PLAZA JORDI',
+                'QUI': 'RESQUITUMBE CIA. LTDA.', 'SP': 'RESANPEDRO CIA. LTDA.', 'PUEM': 'RESPUEMBO CIA. LTDA.',
+                'FICOA': 'RESFICOA CIA. LTDA.', 'URD': 'RESESTRADA CIA. LTDA.', 'SAL': 'SALINAS',
+                'CENT': 'RESGUAYAS CIA. LTDA.', 'SMB': 'SAN BORONDON', 'HEL': 'RESHELECHOS CIA. LTDA.'
             };
-            const actualSheets = workbook.SheetNames.map(s => s.trim().toUpperCase());
+            
+            const monthMap = {'enero':'ENE', 'febrero':'FEB', 'marzo':'MAR', 'abril':'ABR', 'mayo':'MAY', 'junio':'JUN', 
+                            'julio':'JUL', 'agosto':'AGO', 'septiembre':'SEP', 'octubre':'OCT', 'noviembre':'NOV', 'diciembre':'DIC'};
 
             uiStores.forEach(storeName => {
-                const sheetName = storeToSheetMap[storeName] || storeName;
-                if (!actualSheets.includes(sheetName)) return;
+                const sheetName = tktStoreMap[storeName];
+                if (!sheetName || !workbookTkt.Sheets[sheetName]) return;
                 
-                const label = document.createElement('label');
-                label.className = 'checkbox-item';
-                label.innerHTML = `<input type="checkbox" class="sheet-cb" value="${storeName}"> ${storeName}`;
-                sheetCheckboxes.appendChild(label);
+                const ws = workbookTkt.Sheets[sheetName];
+                const raw = XLSX.utils.sheet_to_json(ws, {header: 1, defval: null});
+                
+                let headerRow = null;
+                let dataStartIndex = 0;
+                for (let r = 0; r < 10; r++) {
+                    if (raw[r] && raw[r].some(cell => String(cell).trim().toLowerCase() === 'enero')) {
+                        headerRow = raw[r];
+                        dataStartIndex = r + 1;
+                        break;
+                    }
+                }
+                if(!headerRow) return;
+
+                const colToMonth = {};
+                for(let j = 1; j < headerRow.length; j++) {
+                    if(headerRow[j] && monthMap[String(headerRow[j]).trim().toLowerCase()]) {
+                        colToMonth[j] = monthMap[String(headerRow[j]).trim().toLowerCase()];
+                    }
+                }
+
+                allTktData[storeName] = {};
+                
+                let isDollarSection = false;
+                for (let r = dataStartIndex; r < raw.length; r++) {
+                    const row = raw[r];
+                    if(!row || !row[0]) continue;
+                    const serviceName = String(row[0]).trim().toUpperCase();
+                    if (serviceName.includes('VALORES EN')) isDollarSection = true;
+                    
+                    if(['SALON', 'DOMICILIO', 'LLEVAR', 'AGREGADORES', 'TOTAL FACTURAS', 'TOTAL $'].includes(serviceName)) {
+                        const actualKey = isDollarSection ? serviceName + ' $' : serviceName;
+                        if(!allTktData[storeName][actualKey]) allTktData[storeName][actualKey] = {};
+                        
+                        Object.keys(colToMonth).forEach(colIdx => {
+                            const monthKey = colToMonth[colIdx];
+                            allTktData[storeName][actualKey][monthKey] = parseSafeNumber(row[colIdx]);
+                        });
+                    }
+                }
+                let keysFound = Object.keys(allTktData[storeName]);
+                if (keysFound.length === 0) {
+                    delete allTktData[storeName];
+                }
             });
-            sheetCheckboxes.classList.remove('disabled-list');
-            salesAccountInput.disabled = false;
+
+            const loadedStoresCount = Object.keys(allTktData).length;
+            if (loadedStoresCount > 0) {
+                tktStatus.textContent = `✓ Archivo TKT cargado (${loadedStoresCount} locales procesados)`;
+                tktStatus.style.color = "#2ecc71";
+                const infoEl = document.getElementById('persistTktInfo');
+                if (infoEl) {
+                    infoEl.innerHTML = `<span style="color:#27ae60; font-weight:bold;">✓ Activo:</span> ${fileName} (${loadedStoresCount} locales)`;
+                }
+            } else {
+                tktStatus.textContent = `⚠ Archivo TKT cargado pero sin datos válidos. Revise formato.`;
+                tktStatus.style.color = "#e67e22";
+            }
+        } catch (err) {
+            console.error(err);
+            tktStatus.textContent = "Error al leer TKT";
+            tktStatus.style.color = "red";
+        }
+    }
+
+    // --- PERSISTENCIA EN SERVIDOR (CONTENEDOR PUERTO 8089) + INDEXEDDB ---
+    const IDB_NAME = 'HorneroDashboardDB';
+    const IDB_STORE = 'excelFiles';
+
+    function openIDB() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(IDB_NAME, 1);
+            req.onupgradeneeded = (e) => {
+                e.target.result.createObjectStore(IDB_STORE);
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function saveToIDB(key, arrayBuffer, fileName) {
+        try {
+            const db = await openIDB();
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.objectStore(IDB_STORE).put({ buffer: arrayBuffer, name: fileName, updated: new Date().toLocaleString() }, key);
+        } catch (e) { console.warn('IDB save warning:', e); }
+    }
+
+    async function loadFromIDB(key) {
+        try {
+            const db = await openIDB();
+            return new Promise((resolve) => {
+                const tx = db.transaction(IDB_STORE, 'readonly');
+                const req = tx.objectStore(IDB_STORE).get(key);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+            });
+        } catch (e) { return null; }
+    }
+
+    async function clearIDB() {
+        try {
+            const db = await openIDB();
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.objectStore(IDB_STORE).clear();
+        } catch (e) {}
+    }
+
+    async function uploadToServerPersist(type, file, arrayBuffer) {
+        await saveToIDB(type, arrayBuffer, file.name);
+        const msgEl = document.getElementById('persistActionMsg');
+        try {
+            const res = await fetch(`/api/upload/${type}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Filename': encodeURIComponent(file.name)
+                },
+                body: arrayBuffer
+            });
+            if (res.ok) {
+                if (msgEl) msgEl.textContent = `✓ "${file.name}" guardado de forma persistente en el servidor (Contenedor) y navegador.`;
+                updatePersistenceBadge(true, true);
+                return;
+            }
+        } catch (err) {
+            // Si está en GitHub Pages o archivo local sin backend, usa IndexedDB
+        }
+        if (msgEl) msgEl.textContent = `✓ "${file.name}" guardado de forma persistente en este navegador.`;
+        updatePersistenceBadge(false, true);
+    }
+
+    function updatePersistenceBadge(serverActive, hasFiles) {
+        const badge = document.getElementById('persistenceBadge');
+        if (!badge) return;
+        if (serverActive && hasFiles) {
+            badge.style.background = '#d4efdf';
+            badge.style.color = '#196f3d';
+            badge.textContent = '🟢 Persistencia Servidor Activa (Puerto 8089)';
+        } else if (hasFiles) {
+            badge.style.background = '#ebf5fb';
+            badge.style.color = '#1b4f72';
+            badge.textContent = '🔵 Persistencia Local Activa';
+        } else {
+            badge.style.background = '#fef9e7';
+            badge.style.color = '#b7950b';
+            badge.textContent = '⚪ Sin archivos persistidos';
+        }
+    }
+
+    async function loadPersistedFiles() {
+        let loadedAny = false;
+        let serverAvailable = false;
+
+        // 1. Intentar cargar desde el servidor del contenedor (/api/status)
+        try {
+            const res = await fetch('/api/status');
+            if (res.ok) {
+                serverAvailable = true;
+                const status = await res.json();
+                if (status.pyg && status.pyg.exists) {
+                    const rPyg = await fetch('/api/files/pyg');
+                    if (rPyg.ok) {
+                        const buf = await rPyg.arrayBuffer();
+                        processPygArrayBuffer(buf, `${status.pyg.filename} (${status.pyg.updated})`);
+                        loadedAny = true;
+                    }
+                }
+                if (status.tkt && status.tkt.exists) {
+                    const rTkt = await fetch('/api/files/tkt');
+                    if (rTkt.ok) {
+                        const buf = await rTkt.arrayBuffer();
+                        processTktArrayBuffer(buf, `${status.tkt.filename} (${status.tkt.updated})`);
+                        loadedAny = true;
+                    }
+                }
+            }
+        } catch (e) {
+            // Backend no disponible, pasar a IndexedDB
+        }
+
+        // 2. Fallback a IndexedDB si no se cargó del servidor
+        if (!loadedAny) {
+            const idbPyg = await loadFromIDB('pyg');
+            if (idbPyg && idbPyg.buffer) {
+                processPygArrayBuffer(idbPyg.buffer, `${idbPyg.name} (${idbPyg.updated})`);
+                loadedAny = true;
+            }
+            const idbTkt = await loadFromIDB('tkt');
+            if (idbTkt && idbTkt.buffer) {
+                processTktArrayBuffer(idbTkt.buffer, `${idbTkt.name} (${idbTkt.updated})`);
+                loadedAny = true;
+            }
+        }
+
+        updatePersistenceBadge(serverAvailable, loadedAny);
+    }
+
+    function handleFileUploadInput(file, type) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const arrayBuffer = e.target.result;
+            if (type === 'pyg') {
+                processPygArrayBuffer(arrayBuffer, file.name);
+            } else {
+                processTktArrayBuffer(arrayBuffer, file.name);
+            }
+            await uploadToServerPersist(type, file, arrayBuffer);
         };
         reader.readAsArrayBuffer(file);
+    }
+
+    fileInput.addEventListener('change', function(e) {
+        handleFileUploadInput(e.target.files[0], 'pyg');
     });
 
     tktInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+        handleFileUploadInput(e.target.files[0], 'tkt');
+    });
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbookTkt = XLSX.read(data, {type: 'array'});
-                allTktData = {}; // reset
+    // Listeners del Menú de Persistencia
+    document.getElementById('togglePersistMenuBtn')?.addEventListener('click', () => {
+        const panel = document.getElementById('persistMenuPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
 
-                const uiStores = ['HOR', 'AMA', 'EST', 'ILA', 'ARM', 'SERV', 'ATA', 'CUM', 'PIZ', 'TUM', 'PON', 'MAL', 'FLO', 'CAR', 'PJ', 'QUI', 'SP', 'PUEM', 'FICOA', 'URD', 'SAL', 'CENT', 'SMB', 'HEL'];
-                const tktStoreMap = {
-                    'HOR': 'PIZZERIA EL HORNERO CIA. ', 'AMA': 'PIZZERIA AMAZONAS LOVAROB', 'EST': 'RESTADIO CIA. LTDA.',
-                    'ILA': 'RESTAURANTES ILALO RESILA', 'ARM': 'ARMENIA', 'SERV': 'SERVICIOS A DOMICILIO SER',
-                    'ATA': 'RESTAURANTE ATAHUALPA RES', 'CUM': 'RESTAURANTE CUMBAYA RESCU', 'PIZ': 'PIZARRICA CIA. LTDA.',
-                    'TUM': 'RESTUMBACO CIA. LTDA.', 'PON': 'RESPONCIANO CIA. LTDA.', 'MAL': 'RESMALDONADO CIA. LTDA.',
-                    'FLO': 'RESFLORESTA CIA. LTDA.', 'CAR': 'RESCARAPUNGO CIA. LTDA.', 'PJ': 'PLAZA JORDI',
-                    'QUI': 'RESQUITUMBE CIA. LTDA.', 'SP': 'RESANPEDRO CIA. LTDA.', 'PUEM': 'RESPUEMBO CIA. LTDA.',
-                    'FICOA': 'RESFICOA CIA. LTDA.', 'URD': 'RESESTRADA CIA. LTDA.', 'SAL': 'SALINAS',
-                    'CENT': 'RESGUAYAS CIA. LTDA.', 'SMB': 'SAN BORONDON', 'HEL': 'RESHELECHOS CIA. LTDA.'
-                };
-                
-                const monthMap = {'enero':'ENE', 'febrero':'FEB', 'marzo':'MAR', 'abril':'ABR', 'mayo':'MAY', 'junio':'JUN', 
-                                'julio':'JUL', 'agosto':'AGO', 'septiembre':'SEP', 'octubre':'OCT', 'noviembre':'NOV', 'diciembre':'DIC'};
+    document.getElementById('menuPygUpload')?.addEventListener('change', (e) => {
+        handleFileUploadInput(e.target.files[0], 'pyg');
+    });
 
-                uiStores.forEach(storeName => {
-                    const sheetName = tktStoreMap[storeName];
-                    if (!sheetName || !workbookTkt.Sheets[sheetName]) return;
-                    
-                    const ws = workbookTkt.Sheets[sheetName];
-                    const raw = XLSX.utils.sheet_to_json(ws, {header: 1, defval: null});
-                    
-                    // Buscar la fila que contiene los meses dinámicamente
-                    let headerRow = null;
-                    let dataStartIndex = 0;
-                    for (let r = 0; r < 10; r++) {
-                        if (raw[r] && raw[r].some(cell => String(cell).trim().toLowerCase() === 'enero')) {
-                            headerRow = raw[r];
-                            dataStartIndex = r + 1;
-                            break;
-                        }
-                    }
-                    if(!headerRow) return;
+    document.getElementById('menuTktUpload')?.addEventListener('change', (e) => {
+        handleFileUploadInput(e.target.files[0], 'tkt');
+    });
 
-                    const colToMonth = {};
-                    for(let j = 1; j < headerRow.length; j++) {
-                        if(headerRow[j] && monthMap[String(headerRow[j]).trim().toLowerCase()]) {
-                            colToMonth[j] = monthMap[String(headerRow[j]).trim().toLowerCase()];
-                        }
-                    }
+    document.getElementById('reloadPersistedBtn')?.addEventListener('click', async () => {
+        await loadPersistedFiles();
+        const msgEl = document.getElementById('persistActionMsg');
+        if (msgEl) msgEl.textContent = '✓ Archivos persistidos recargados.';
+    });
 
-                    allTktData[storeName] = {};
-                    
-                    let isDollarSection = false;
-                    for (let r = dataStartIndex; r < raw.length; r++) {
-                        const row = raw[r];
-                        if(!row || !row[0]) continue;
-                        const serviceName = String(row[0]).trim().toUpperCase();
-                        if (serviceName.includes('VALORES EN')) isDollarSection = true;
-                        
-                        // Buscamos SALON, DOMICILIO, LLEVAR, AGREGADORES, TOTAL FACTURAS, TOTAL $
-                        if(['SALON', 'DOMICILIO', 'LLEVAR', 'AGREGADORES', 'TOTAL FACTURAS', 'TOTAL $'].includes(serviceName)) {
-                            const actualKey = isDollarSection ? serviceName + ' $' : serviceName;
-                            if(!allTktData[storeName][actualKey]) allTktData[storeName][actualKey] = {};
-                            
-                            Object.keys(colToMonth).forEach(colIdx => {
-                                const monthKey = colToMonth[colIdx];
-                                allTktData[storeName][actualKey][monthKey] = parseSafeNumber(row[colIdx]);
-                            });
-                        }
-                    }
-                    let keysFound = Object.keys(allTktData[storeName]);
-                    if (keysFound.length === 0) {
-                        delete allTktData[storeName];
-                    }
-                });
+    document.getElementById('clearPersistedBtn')?.addEventListener('click', async () => {
+        await clearIDB();
+        try { await fetch('/api/clear', { method: 'DELETE' }); } catch (e) {}
+        document.getElementById('persistPygInfo').textContent = 'Sin archivo guardado';
+        document.getElementById('persistTktInfo').textContent = 'Sin archivo guardado';
+        tktStatus.textContent = 'Archivos persistidos eliminados';
+        tktStatus.style.color = '#e74c3c';
+        const msgEl = document.getElementById('persistActionMsg');
+        if (msgEl) msgEl.textContent = '🗑️ Se han borrado los archivos persistidos.';
+        updatePersistenceBadge(false, false);
+    });
 
-                const loadedStoresCount = Object.keys(allTktData).length;
-                if (loadedStoresCount > 0) {
-                    tktStatus.textContent = `✓ Archivo TKT cargado (${loadedStoresCount} locales procesados)`;
-                    tktStatus.style.color = "#2ecc71";
-                } else {
-                    tktStatus.textContent = `⚠ Archivo TKT cargado pero sin datos válidos. Revise formato.`;
-                    tktStatus.style.color = "#e67e22";
-                }
-            } catch (err) {
-                console.error(err);
-                tktStatus.textContent = "Error al leer TKT";
-                tktStatus.style.color = "red";
-            }
-        };
-        reader.readAsArrayBuffer(file);
+    // Cargar automáticamente archivos persistidos al abrir la página
+    window.addEventListener('DOMContentLoaded', () => {
+        loadPersistedFiles();
     });
 
     sheetCheckboxes.addEventListener('change', function(e) {

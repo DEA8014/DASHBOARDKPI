@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  dashboard-kpi:
+    build: .
+    container_name: elhornero-dashboard-kpi
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
