@@ -223,6 +223,7 @@
             <div class="control-group">
                 <label>1A. Cargar Balance (P&G)</label>
                 <input type="file" id="excelUpload" accept=".xlsx, .xls">
+                <span id="pygStatus" style="font-size: 11px; color: #e74c3c; margin-top: 5px; display: block;">Falta cargar archivo P&G</span>
             </div>
             <div class="control-group">
                 <label>1B. Cargar Tickets (TKT)</label>
@@ -370,6 +371,7 @@
     const chartColors = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#34495e', '#d35400', '#c0392b'];
 
     const fileInput = document.getElementById('excelUpload');
+    const pygStatus = document.getElementById('pygStatus');
     const tktInput = document.getElementById('tktUpload');
     const tktStatus = document.getElementById('tktStatus');
     const sheetCheckboxes = document.getElementById('sheetCheckboxes');
@@ -379,41 +381,63 @@
     const dashboardContent = document.getElementById('dashboardContent');
 
     function processPygArrayBuffer(arrayBuffer, fileName = "Balance_PyG.xlsx") {
-        const data = new Uint8Array(arrayBuffer);
-        workbook = XLSX.read(data, {type: 'array'});
-        
-        sheetCheckboxes.innerHTML = `
-            <label class="checkbox-item" style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold;">
-                <input type="checkbox" id="selectAllSheets"> Seleccionar Todo
-            </label>
-        `;
-        // Códigos de las empresas
-        const uiStores = ['HOR', 'AMA', 'EST', 'ILA', 'ARM', 'SERV', 'ATA', 'CUM', 'PIZ', 'TUM', 'PON', 'MAL', 'FLO', 'CAR', 'PJ', 'QUI', 'SP', 'PUEM', 'FICOA', 'URD', 'SAL', 'CENT', 'SMB', 'HEL'];
-        const storeToSheetMap = { 
-            'ARM': 'ILA', 
-            'PJ': 'CAR',
-            'URD': 'ESTRA',
-            'SAL': 'ESTRA',
-            'CENT': 'GUAY',
-            'SMB': 'GUAY'
-        };
-        const actualSheets = workbook.SheetNames.map(s => s.trim().toUpperCase());
-
-        uiStores.forEach(storeName => {
-            const sheetName = storeToSheetMap[storeName] || storeName;
-            if (!actualSheets.includes(sheetName)) return;
+        try {
+            const data = new Uint8Array(arrayBuffer);
+            workbook = XLSX.read(data, {type: 'array'});
             
-            const label = document.createElement('label');
-            label.className = 'checkbox-item';
-            label.innerHTML = `<input type="checkbox" class="sheet-cb" value="${storeName}"> ${storeName}`;
-            sheetCheckboxes.appendChild(label);
-        });
-        sheetCheckboxes.classList.remove('disabled-list');
-        salesAccountInput.disabled = false;
+            sheetCheckboxes.innerHTML = `
+                <label class="checkbox-item" style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold;">
+                    <input type="checkbox" id="selectAllSheets" checked> Seleccionar Todo
+                </label>
+            `;
+            // Códigos de las empresas
+            const uiStores = ['HOR', 'AMA', 'EST', 'ILA', 'ARM', 'SERV', 'ATA', 'CUM', 'PIZ', 'TUM', 'PON', 'MAL', 'FLO', 'CAR', 'PJ', 'QUI', 'SP', 'PUEM', 'FICOA', 'URD', 'SAL', 'CENT', 'SMB', 'HEL'];
+            const storeToSheetMap = { 
+                'ARM': 'ILA', 
+                'PJ': 'CAR',
+                'URD': 'ESTRA',
+                'SAL': 'ESTRA',
+                'CENT': 'GUAY',
+                'SMB': 'GUAY'
+            };
+            const actualSheets = workbook.SheetNames.map(s => s.trim().toUpperCase());
+            let foundStores = 0;
 
-        const infoEl = document.getElementById('persistPygInfo');
-        if (infoEl) {
-            infoEl.innerHTML = `<span style="color:#27ae60; font-weight:bold;">✓ Activo:</span> ${fileName}`;
+            uiStores.forEach(storeName => {
+                const sheetName = storeToSheetMap[storeName] || storeName;
+                if (!actualSheets.includes(sheetName)) return;
+                foundStores++;
+                const label = document.createElement('label');
+                label.className = 'checkbox-item';
+                label.innerHTML = `<input type="checkbox" class="sheet-cb" value="${storeName}" checked> ${storeName}`;
+                sheetCheckboxes.appendChild(label);
+            });
+            sheetCheckboxes.classList.remove('disabled-list');
+            salesAccountInput.disabled = false;
+
+            if (pygStatus) {
+                if (foundStores > 0) {
+                    pygStatus.textContent = `✓ Archivo P&G cargado (${foundStores} locales listos)`;
+                    pygStatus.style.color = "#2ecc71";
+                } else {
+                    pygStatus.textContent = `⚠ Archivo P&G sin hojas válidas.`;
+                    pygStatus.style.color = "#e67e22";
+                }
+            }
+
+            const infoEl = document.getElementById('persistPygInfo');
+            if (infoEl) {
+                infoEl.innerHTML = `<span style="color:#27ae60; font-weight:bold;">✓ Activo:</span> ${fileName} (${foundStores} locales)`;
+            }
+
+            // Disparar automáticamente la extracción de meses y habilitar el botón "Generar Comparativa"
+            sheetCheckboxes.dispatchEvent(new Event('change'));
+        } catch (err) {
+            console.error(err);
+            if (pygStatus) {
+                pygStatus.textContent = "Error al leer archivo P&G";
+                pygStatus.style.color = "red";
+            }
         }
     }
 
@@ -688,6 +712,10 @@
         try { await fetch('/api/clear', { method: 'DELETE' }); } catch (e) {}
         document.getElementById('persistPygInfo').textContent = 'Sin archivo guardado';
         document.getElementById('persistTktInfo').textContent = 'Sin archivo guardado';
+        if (pygStatus) {
+            pygStatus.textContent = 'Archivos persistidos eliminados';
+            pygStatus.style.color = '#e74c3c';
+        }
         tktStatus.textContent = 'Archivos persistidos eliminados';
         tktStatus.style.color = '#e74c3c';
         const msgEl = document.getElementById('persistActionMsg');
